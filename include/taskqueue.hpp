@@ -4,9 +4,12 @@
 #include <any>
 #include <array>
 #include <atomic>
+#include <thread>
+#include <chrono>
 
+/*
 class TaskQueue{
-private:   
+private:
     struct Entry{
         int ip;
         Request req;
@@ -19,46 +22,131 @@ private:
             ip(ip), req(req), key(key), value(std::nullopt) {}
 
         Entry(int ip, Request req, std::string &key, std::any value) :
-            ip(ip), req(req), key(key), value(value) {}       
+            ip(ip), req(req), key(key), value(value) {}
     };
 
     std::array<Entry, 20> queue;
     std::atomic<int> head;
     std::atomic<int> tail;
+    std::atomic<int> size;
 
-    void increment_head(){
-        int old_val = head.load(std::memory_order_relaxed);
+    int increment_head(){
+        int old_val;
         int new_val;
         do {
+            old_val = head.load(std::memory_order_relaxed);
             new_val = (old_val + 1) % 20;
-        } while (!head.compare_exchange_weak(old_val, new_val, 
-                 std::memory_order_release, 
+        } while (!head.compare_exchange_weak(old_val, new_val,
+                 std::memory_order_release,
                  std::memory_order_relaxed));
+        return old_val;
+    }
+
+    int decrement_head(){
+        int old_val, new_val;
+        do {
+            old_val = head.load(std::memory_order_relaxed);
+            new_val = (old_val - 1 + 20) % 20;
+        } while (!head.compare_exchange_weak(old_val, new_val,
+                 std::memory_order_release,
+                 std::memory_order_relaxed));
+        return old_val;
     }
 
 
-    void decrement_tail(){
-        int old_val = tail.load(std::memory_order_relaxed);
+    int increment_tail(){
+        int old_val;
         int new_val;
         do {
-            new_val = (old_val - 1 + 20) % 20;
-        } while (!tail.compare_exchange_weak(old_val, new_val, 
-                 std::memory_order_release, 
+            old_val = tail.load(std::memory_order_relaxed);
+            new_val = (old_val + 1) % 20;
+        } while (!tail.compare_exchange_weak(old_val, new_val,
+                 std::memory_order_release,
                  std::memory_order_relaxed));
+        return old_val;
     }
 
 public:
     TaskQueue(): head(1), tail(0) {}
-    
-    void push_entry(){
-        
+
+    void write(int ip, Request req, std::string key, std::any value){
+        int idx = increment_head();
+        queue[idx] = Entry(ip, req, key, value);
     }
-    
-    Entry pop_entry_front(){
-        
+
+    void write(int ip, Request req, std::string key){
+        int idx = increment_head();
+        queue[idx] = Entry(ip, req, key);
     }
-    
-    Entry pop_entry_back(){
-        
+
+    void write(Entry entry){
+        int idx = increment_head();
+        queue[idx] = entry;
+    }
+
+    Entry read(){
+        int idx = increment_tail();
+        Entry entry = queue[idx];
+        if(queue[idx].ip != 0){
+
+        }
+
+    }
+
+    Entry steal(){
+
+    }
+};
+
+*/
+
+
+class TaskQueue{
+private:
+    struct Entry{
+        int ip;
+        Request req;
+        std::string key;
+        std::optional<std::any> value;
+
+        Entry() : ip(0), req(), key(), value(std::nullopt) {}
+
+        Entry(int ip, Request req, std::string &key, std::optional<std::any> value = std::nullopt) :
+            ip(ip), req(req), key(key), value(value) {}
+    };
+
+    std::array<Entry, 20> queue;
+    int head;
+    int tail;
+    std::atomic<int> size;
+
+public:
+    TaskQueue(): head(1), tail(0), size(0){}
+
+    void add_entry(int ip, Request req, std::string key,
+                   std::optional<std::any> value = std::nullopt){
+        while((head + 1) % 20 == tail){
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+        }
+        queue[head] = Entry(ip, req, key, value);
+        head = (head + 1) % 20;
+    }
+
+    void add_entry(Entry entry){
+        while((head + 1) % 20 == tail){
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+        }
+        queue[head] = entry;
+        head = (head + 1) % 20;
+    }
+
+    Entry read_entry(){
+        while(head == tail){
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+        }
+        Entry entry = queue[tail];
+        queue[tail] = Entry();
+        tail = (tail + 1) % 20;
+        return entry;
     }
 };
