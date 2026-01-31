@@ -2,5 +2,4 @@
 enum Request{
     PUT,
     GET,
-    REMOVE
 };

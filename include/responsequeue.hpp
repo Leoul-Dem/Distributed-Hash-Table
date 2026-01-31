@@ -1,19 +1,22 @@
-#include <optional>
 #include <any>
 #include <array>
 #include <atomic>
 #include <thread>
 #include <chrono>
+#include <string>
+#include <bit>
 
 class ResponseQueue{
 private:
     struct Entry{
-        int ip;
-        std::any resp;
+        int client_fd;
+        std::string resp;
 
-        Entry() : ip(0), resp(std::nullopt) {}
+        Entry() : client_fd(0), resp() {}
 
-        Entry(int ip, std::any resp) : ip(ip), resp(resp) {}
+        Entry(const int &ip, const std::string &resp) : client_fd(ip), resp(resp) {}
+
+        Entry(const int &ip, const std::any &resp) : client_fd(ip), resp(std::bit_cast<std::string>(resp)) {}
     };
 
     std::array<Entry, 20> queue;
@@ -23,6 +26,7 @@ private:
 
 public:
     ResponseQueue(): head(1), tail(0), size(0){}
+
 
     void add_entry(int ip, std::any resp){
         while((head + 1) % 20 == tail){

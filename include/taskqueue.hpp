@@ -1,11 +1,10 @@
 #include "request.hpp"
 #include <string>
-#include <optional>
-#include <any>
 #include <array>
 #include <atomic>
 #include <thread>
 #include <chrono>
+#include <optional>
 
 /*
 class TaskQueue{
@@ -102,29 +101,29 @@ public:
 
 
 class TaskQueue{
-private:
+public:
     struct Entry{
-        int ip;
+        int client_fd;
         Request req;
         std::string key;
-        std::optional<std::any> value;
-
-        Entry() : ip(0), req(), key(), value(std::nullopt) {}
-
-        Entry(int ip, Request req, std::string &key, std::optional<std::any> value = std::nullopt) :
-            ip(ip), req(req), key(key), value(value) {}
+        std::optional<std::string> value;
+    
+        Entry() : client_fd(0), req(), key(), value(std::nullopt) {}
+    
+        Entry(int ip, Request req, std::string &key, std::optional<std::string> value) :
+            client_fd(ip), req(req), key(key), value(value) {}
     };
-
+    
+private:
     std::array<Entry, 20> queue;
     int head;
     int tail;
     std::atomic<int> size;
-
+        
 public:
     TaskQueue(): head(1), tail(0), size(0){}
 
-    void add_entry(int ip, Request req, std::string key,
-                   std::optional<std::any> value = std::nullopt){
+    void add_entry(int ip, Request req, std::string key, std::optional<std::string> value){
         while((head + 1) % 20 == tail){
             std::this_thread::sleep_for(std::chrono::microseconds(100));
         }
