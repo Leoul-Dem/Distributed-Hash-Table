@@ -1,5 +1,4 @@
 #include <array>
-#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
@@ -10,79 +9,54 @@
 #include <iostream>
 #include <string>
 #include <string_view>
-#include <bit>
 #include <ranges>
 #include <vector>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include "../include/storage.hpp"
 
-class Storage{
-private:
-    static const size_t TABLE_SIZE = 10000000;
-    HashTable<TABLE_SIZE> table;
-    TaskQueue tasks;
-    ResponseQueue responses;
-    std::array<std::thread, 3> workers;
-    std::promise<void> shutdown_signal;
-    static Storage* instance;
-    
-    int create_server(int &server_fd){
-        server_fd = socket(AF_INET, SOCK_DGRAM, 0);
-        if(server_fd == -1){
-            std::cerr << "server\n";
-            return -1;
-        }
-        
-        sockaddr_in addr{};
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(1859);
-        addr.sin_addr.s_addr = INADDR_ANY;
-        
-        if(bind(server_fd, (struct sockaddr*)&addr, sizeof(addr)) == -1){
-            std::fputs("bind\n", stderr);
-            close(server_fd);
-            return -1;
-        }
+Storage* Storage::instance = nullptr;
 
-        return 0;
-    }
-    
-    /*int accept_client_conn(const int serverfd, std::array<int, 10> &client_fd){
-        for(int i = 0; i < 10; ){
-            int new_client_fd = accept(serverfd, nullptr, nullptr);
-            if(new_client_fd != -1){
-                client_fd[i] = new_client_fd;
-                i++;
-            }
-        }
-        int new_client_fd = accept(serverfd, nullptr, nullptr);
-        if(new_client_fd != -1){
-            client_fd[0] = new_client_fd;
-            return 0;
-        }
+Storage::Storage(uint16_t port) : table(), tasks(), responses(), port(port) {
+    instance = this;
+    std::signal(SIGINT, Storage::signalHandler);
+}
+
+int Storage::create_server(int &server_fd, uint16_t port){
+    server_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if(server_fd == -1){
+        std::cerr << "Failed to create socket\n";
         return -1;
-    }*/
-   
-public:
-    Storage(): table(), tasks(), responses(){
-        instance = this;
-        std::signal(SIGINT, Storage::signalHandler);
     }
     
-    static void signalHandler(int signal){
-        if(signal == SIGINT && instance){
-            instance->shutdown_signal.set_value();
-        }
-    }
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = INADDR_ANY;
     
-    void run(){        
+    if(bind(server_fd, (struct sockaddr*)&addr, sizeof(addr)) == -1){
+        std::cerr << "Failed to bind socket\n";
+        close(server_fd);
+        return -1;
+    }
+
+    return 0;
+}
+
+void Storage::signalHandler(int signal){
+    if(signal == SIGINT && instance){
+        instance->shutdown_signal.set_value();
+    }
+}
+
+void Storage::run(){
         int server_fd;
-        if(!create_server(server_fd)){
-            std::cerr << "Failed to create server.\n";
+        if(create_server(server_fd, port) != 0){
+            std::cerr << "Failed to create server on port " << port << std::endl;
             exit(EXIT_FAILURE);
         }
         
+        std::cout << "Server started on port " << port << std::endl;
         
         workers[0] = std::thread(&Storage::recieve, this, server_fd);
         workers[1] = std::thread(&Storage::execute, this);
@@ -95,15 +69,18 @@ public:
         for(auto &i : workers){
             i.join();
         }
+        
+        close(server_fd);
     }
-    
-    void recieve(const int server_fd){
+
+void Storage::recieve(const int server_fd){
         sockaddr_in addr {};
         std::array<char, 2048> buffer;
         socklen_t addr_len = sizeof(addr);
         
-        auto run = [&](){
+        auto run = [this, server_fd, &addr, &buffer, &addr_len](){
             while(true){
+                addr_len = sizeof(addr);
                 ssize_t bytes_received = recvfrom(server_fd, buffer.data(), buffer.size(), 0,
                                                   (struct sockaddr*)&addr, &addr_len);
                 if(bytes_received == -1){
@@ -112,80 +89,121 @@ public:
                 }
                 buffer[bytes_received] = '\0';
                 
-                int c_fd;
                 Request req;
                 std::string key;
                 std::optional<std::string>value{std::nullopt};
-                if(parse_req(std::string(buffer.data()), c_fd, req, key, value) == 0){
-                    tasks.add_entry(c_fd, req, key, value);
+                if(parse_req(std::string(buffer.data()), req, key, value) == 0){
+                    tasks.add_entry(addr, req, key, value);
                 }
             }  
         };
 
-        std::jthread th1(run);   
+        std::jthread th1(run);
     }
-    
-    void execute(){
-        auto run = [&](){
+
+std::string Storage::serialize_response(Request req, const std::any &result){
+        switch (req) {
+            case Request::PUT: {
+                bool success = std::any_cast<bool>(result);
+                return success ? "PUT:SUCCESS:true" : "PUT:SUCCESS:false";
+            }
+            case Request::GET: {
+                auto opt_val = std::any_cast<std::optional<std::any>>(result);
+                if(opt_val.has_value()){
+                    try {
+                        std::string val_str = std::any_cast<std::string>(opt_val.value());
+                        return "GET:VALUE:" + val_str;
+                    } catch (...) {
+                        return "GET:VALUE:unknown";
+                    }
+                } else {
+                    return "GET:NULL";
+                }
+            }
+            default:
+                return "ERROR:unknown";
+        }
+    }
+
+void Storage::execute(){
+        auto run = [this](){
             while(true){
                 TaskQueue::Entry todo = tasks.read_entry();
                 std::any resp;
                 switch (todo.req) {
-                    case Request::GET:
+                    case Request::GET:{
                         resp = table.get(todo.key);
-                        break;
-                    case Request::PUT:
-                        resp = table.put(todo.key, todo.value);
-                        break;                
+                    }
+                    case Request::PUT:{
+                        if (todo.value.has_value()) {
+                            std::any val = std::any(todo.value.value());
+                            resp = table.put(todo.key, val);
+                        }else{
+                            continue;
+                        }
+                    }
                     default:
-                        break;
+                        continue;
                 }
-                responses.add_entry(todo.client_fd, resp);
+                std::string serialized = serialize_response(todo.req, resp);
+                responses.add_entry(todo.client_addr, serialized);
             }
         };
         
         std::jthread th1(run);
     }
-    
-    void respond(const int server_fd){
-        
-        auto run = [&](){
-            auto tosend = responses.read_entry();
-            ssize_t bytes_sent = sendto(server_fd, std::bit_cast<std::string>(tosend.resp).data(),
-                                        std::bit_cast<std::string>(tosend.resp).size(), 0,
-                                        (struct sockaddr*)&addr, sizeof(addr));
-            if(bytes_sent == -1){
-                std::fputs("sendto\n", stderr);
-            }          
+
+void Storage::respond(const int server_fd){
+        auto run = [this, server_fd](){
+            while(true){
+                auto tosend = responses.read_entry();
+                socklen_t addr_len = sizeof(tosend.client_addr);
+                ssize_t bytes_sent = sendto(server_fd, tosend.resp.data(),
+                                            tosend.resp.size(), 0,
+                                            (struct sockaddr*)&tosend.client_addr, addr_len);
+                if(bytes_sent == -1){
+                    std::fputs("sendto\n", stderr);
+                }          
+            }
         };
         
-        
-    }  
-    
-    int parse_req(const std::string &input, int &client_fd, Request &req,
+        std::jthread th1(run);
+    }
+
+int Storage::parse_req(const std::string &input, Request &req,
                     std::string &key, std::optional<std::string> &value){
         std::string_view str{input};
-        auto split_str = str | std::views::split(':')
-                             | std::ranges::to<std::vector<std::string_view>>();
+        std::vector<std::string_view> split_str;
+        for (auto part : str | std::views::split(':')) {
+            split_str.emplace_back(part.begin(), part.end());
+        }
 
-        Request t_req = std::bit_cast<Request>(split_str[1]);
+        if (split_str.size() < 2) {
+            std::fputs("Invalid request format\n", stderr);
+            return -1;
+        }
 
-        if (t_req == Request::GET && split_str.length() == 3){
-            client_fd = std::bit_cast<int>(split_str[0]);
+        Request t_req;
+        if (split_str[0] == "GET") {
+            t_req = Request::GET;
+        } else if (split_str[0] == "PUT") {
+            t_req = Request::PUT;
+        } else {
+            std::fputs("Invalid request type\n", stderr);
+            return -1;
+        }
+
+        if (t_req == Request::GET && split_str.size() == 2){
             req = t_req;
-            key = split_str[2];
+            key = std::string(split_str[1]);
+            value = std::nullopt;
             return 0;
-        }else if (t_req == Request::PUT && split_str.length() == 4){
-            client_fd = std::bit_cast<int>(split_str[0]);
+        }else if (t_req == Request::PUT && split_str.size() == 3){
             req = t_req;
-            key = split_str[2];
-            value = split_str[3];
+            key = std::string(split_str[1]);
+            value = std::string(split_str[2]);
             return 0;
         }
         std::fputs("Invalid request\n", stderr);
         return -1;
     }
-    
-};
-
-Storage* Storage::instance = nullptr;

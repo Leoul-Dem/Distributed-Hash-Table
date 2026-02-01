@@ -1,22 +1,22 @@
-#include <any>
 #include <array>
 #include <atomic>
 #include <thread>
 #include <chrono>
 #include <string>
-#include <bit>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 class ResponseQueue{
 private:
     struct Entry{
-        int client_fd;
+        sockaddr_in client_addr;
         std::string resp;
 
-        Entry() : client_fd(0), resp() {}
+        Entry() : client_addr(), resp() {
+            client_addr.sin_family = AF_INET;
+        }
 
-        Entry(const int &ip, const std::string &resp) : client_fd(ip), resp(resp) {}
-
-        Entry(const int &ip, const std::any &resp) : client_fd(ip), resp(std::bit_cast<std::string>(resp)) {}
+        Entry(const sockaddr_in &addr, const std::string &resp) : client_addr(addr), resp(resp) {}
     };
 
     std::array<Entry, 20> queue;
@@ -28,11 +28,11 @@ public:
     ResponseQueue(): head(1), tail(0), size(0){}
 
 
-    void add_entry(int ip, std::any resp){
+    void add_entry(const sockaddr_in &client_addr, const std::string &resp){
         while((head + 1) % 20 == tail){
             std::this_thread::sleep_for(std::chrono::microseconds(100));
         }
-        queue[head] = Entry(ip, resp);
+        queue[head] = Entry(client_addr, resp);
         head = (head + 1) % 20;
     }
 
