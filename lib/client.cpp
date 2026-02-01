@@ -1,6 +1,7 @@
 #include "../include/client.hpp"
 #include <thread>
 #include <chrono>
+#include <random>
 
 Client::Client(const std::array<sockaddr_in, 5> &server_addrs, uint16_t port) : server_addrs(server_addrs){
     socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -73,4 +74,26 @@ std::any Client::send_request(const Request &request, const std::string &key, co
     std::fputs("no response\n", stderr);
     timer.fail();  // records failure
     return std::nullopt;
+}
+
+void Client::run(){
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> op_dist(0, 1);
+    std::uniform_int_distribution<int> key_value_dist(0, 10000);
+
+    for(int i = 0; i < 1000000; i++){
+        int operation = op_dist(gen);
+        
+        if(operation == 0){
+            // PUT operation: generate random key and value
+            int key = key_value_dist(gen);
+            int value = key_value_dist(gen);
+            send_request(Request::PUT, std::to_string(key), std::to_string(value));
+        } else {
+            // GET operation: generate random key
+            int key = key_value_dist(gen);
+            send_request(Request::GET, std::to_string(key), std::nullopt);
+        }
+    }
 }

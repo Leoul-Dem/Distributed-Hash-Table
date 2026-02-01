@@ -31,7 +31,7 @@ private:
         
         bool insert(const std::string &key, const std::any &value){
             if(search(key) == std::nullopt){
-                auto newNode = std::make_shared<Node>(Node(key, value, head));
+                auto newNode = std::make_shared<Node>(Node(const_cast<std::string &>(key), const_cast<std::any &>(value), head));
                 head = newNode;
                 return true;
             }
@@ -50,7 +50,7 @@ private:
                     return curr->value;
                 }
                 prev = curr;
-                curr = curr->next;
+                curr = curr->next.get();
             }
             return std::nullopt;
         }

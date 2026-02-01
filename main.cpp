@@ -76,6 +76,7 @@ int main(int argc, char *argv[]){
 }
 
 
+/*
 // Example: run evaluation with multiple clients
 int run_evaluation(const std::array<sockaddr_in, 5> &server_addrs, int num_clients, uint16_t base_port) {
     AggregateReport report;
@@ -116,4 +117,4 @@ int run_evaluation(const std::array<sockaddr_in, 5> &server_addrs, int num_clien
     report.print_report();
     
     return 0;
-}
+}*/
