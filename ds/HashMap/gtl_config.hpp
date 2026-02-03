@@ -54,13 +54,6 @@
     #error "gtl requires Visual Studio 2015 Update 2 or higher."
 #endif
 
-// We support gcc 8 and later.
-#if defined(__GNUC__) && !defined(__clang__)
-    #if __GNUC__ < 8
-        #error "gtl requires gcc 8 or higher."
-    #endif
-#endif
-
 // We support Apple Xcode clang 4.2.1 (version 421.11.65) and later.
 // This corresponds to Apple Xcode version 4.5.
 #if defined(__apple_build_version__) && __apple_build_version__ < 4211165
