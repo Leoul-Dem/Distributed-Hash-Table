@@ -1,17 +1,12 @@
-//
-// Created by leoul on 2/1/26.
-//
-
 #include "Client.h"
 
 #include <chrono>
-#include <iostream>
 #include <random>
 #include <thread>
 #include <unistd.h>
 #include <sys/socket.h>
 
-Client::Client(const std::array<sockaddr_in, 3>& server_addrs, uint16_t client_port) : server_addrs(server_addrs)
+Client::Client(const std::array<sockaddr_in, 3>& server_addrs, const uint16_t client_port) : server_addrs(server_addrs)
 {
     socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if(socket_fd == -1){

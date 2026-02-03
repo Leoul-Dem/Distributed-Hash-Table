@@ -1,7 +1,3 @@
-//
-// Created by leoul on 2/1/26.
-//
-
 #ifndef DISTIBUTED_HASH_TABLE_CLIENT_H
 #define DISTIBUTED_HASH_TABLE_CLIENT_H
 #include <any>
@@ -16,7 +12,6 @@
 
 class Client
 {
-private:
     int socket_fd;
     std::array<sockaddr_in, 3> server_addrs;
     std::atomic<bool> running{true};

@@ -1,7 +1,3 @@
-//
-// Created by leoul on 2/1/26.
-//
-
 #ifndef DISTIBUTED_HASH_TABLE_STORAGE_H
 #define DISTIBUTED_HASH_TABLE_STORAGE_H
 

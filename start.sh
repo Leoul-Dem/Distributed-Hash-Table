@@ -148,7 +148,7 @@ for machine in "${SERVER_MACHINES[@]}"; do
     fi
 done
 
-BINARY_PATH="~/CSE376/Distributed-Hash-Table/main"
+BINARY_PATH="~/CSE376/Distributed-Hash-Table/build/Distibuted_Hash_Table"
 
 echo ""
 echo "=== STARTING SERVERS ==="
