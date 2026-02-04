@@ -14,6 +14,7 @@ class Client
 {
     int socket_fd;
     std::array<sockaddr_in, 3> server_addrs;
+    size_t num_servers;  // Actual number of servers (not array size)
     std::atomic<bool> running{true};
     std::atomic<uint64_t> successful_ops{0};
     std::atomic<uint64_t> timeout_count{0};
@@ -24,7 +25,7 @@ class Client
     std::any send_request(const Request &request, const std::string &key, const std::optional<std::string> &value);
 
 public:
-    Client(const std::array<sockaddr_in, 3> &server_addrs, uint16_t client_port = 0);
+    Client(const std::array<sockaddr_in, 3> &server_addrs, size_t num_servers, uint16_t client_port = 0);
     ~Client();
     void run();
     void stop() { running.store(false); }

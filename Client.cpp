@@ -6,7 +6,8 @@
 #include <unistd.h>
 #include <sys/socket.h>
 
-Client::Client(const std::array<sockaddr_in, 3>& server_addrs, const uint16_t client_port) : server_addrs(server_addrs)
+Client::Client(const std::array<sockaddr_in, 3>& server_addrs, const size_t num_servers, const uint16_t client_port) 
+    : server_addrs(server_addrs), num_servers(num_servers)
 {
     socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if(socket_fd == -1){
@@ -15,7 +16,7 @@ Client::Client(const std::array<sockaddr_in, 3>& server_addrs, const uint16_t cl
 
     timeval tv;
     tv.tv_sec = 0;
-    tv.tv_usec = 50000;  // 50ms timeout
+    tv.tv_usec = 15000;  // 15ms timeout
     setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     if (client_port != 0) {
@@ -39,7 +40,7 @@ Client::~Client()
 int Client::try_send_request(const Request& request, const std::string& key, const std::optional<std::string>& value) const
 {
     // Should be changed if data type is not integer strings
-    const int idx = std::stoi(key) % server_addrs.size();
+    const int idx = std::stoi(key) % num_servers;
     sockaddr_in addr = server_addrs[idx];
     const std::string request_str = serialize_request(request, key, value);
     if(const ssize_t bytes_sent = sendto(socket_fd, request_str.data(), request_str.size(), 0, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)); bytes_sent == -1){
@@ -55,7 +56,6 @@ std::any Client::receive_response()
     socklen_t addr_len = sizeof(addr);
     const ssize_t bytes_received = recvfrom(socket_fd, buffer.data(), buffer.size(), 0, reinterpret_cast<sockaddr*>(&addr), &addr_len);
     if(bytes_received == -1){
-        timeout_count.fetch_add(1, std::memory_order_relaxed);
         return std::nullopt;
     }
     return std::any(std::string(buffer.data(), bytes_received));
@@ -74,6 +74,10 @@ std::any Client::send_request(const Request& request, const std::string& key, co
         if (i < num_retries - 1) {
             std::this_thread::sleep_for(std::chrono::microseconds(500));  // 0.5ms between retries
         }
+    }
+    // Only count as timeout when ALL retries have failed
+    if (running.load(std::memory_order_relaxed)) {
+        timeout_count.fetch_add(1, std::memory_order_relaxed);
     }
     return std::nullopt;
 }

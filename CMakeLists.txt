@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.16)
 project(Distibuted_Hash_Table)
 
 set(CMAKE_CXX_FLAGS "-pthread -O3")
-set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++")
 
 set(CMAKE_CXX_STANDARD 23)
 
